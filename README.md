@@ -65,6 +65,15 @@ prefect-history list --offset 20       # pagination (skip first 20)
 prefect-history show xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
+### Flow Summary
+
+```shell
+# Show per-flow aggregation with stats and success rate
+prefect-history summary
+prefect-history summary --flow etl-pipeline   # filter by flow name
+prefect-history summary --since 2026-01-01    # filter by date
+```
+
 ### Web Dashboard
 
 ```shell
@@ -110,3 +119,4 @@ black .
 ruff check .
 pytest
 ```
+
