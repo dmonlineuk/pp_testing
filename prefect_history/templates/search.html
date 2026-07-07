@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Search - Prefect History</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --border: #334155;
+            --text: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #3b82f6;
+            --red: #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            padding: 1.5rem;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+        .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+
+        .nav { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+        .nav a {
+            color: var(--muted);
+            text-decoration: none;
+            padding: 0.4rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.85rem;
+            border: 1px solid var(--border);
+        }
+        .nav a:hover { color: var(--text); background: var(--surface); }
+        .nav a.active {
+            color: var(--text);
+            background: var(--accent);
+            border-color: var(--accent);
+            font-weight: 600;
+        }
+
+        .filters {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        select, input[type="text"], button, label {
+            background: var(--surface);
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 0.375rem;
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+        }
+        input[type="text"] { min-width: 18rem; }
+        label { display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+        label input { margin: 0; }
+        select:focus, input:focus, button:focus { outline: 2px solid var(--accent); }
+        button { background: var(--accent); border-color: var(--accent); font-weight: 600; cursor: pointer; }
+        button:hover { opacity: 0.9; }
+        .btn-clear { background: transparent; border-color: var(--border); color: var(--muted); text-decoration: none; }
+
+        .error {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid var(--red);
+            color: var(--red);
+            border-radius: 0.375rem;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        th {
+            text-align: left;
+            padding: 0.6rem 0.75rem;
+            background: var(--surface);
+            border-bottom: 2px solid var(--border);
+            color: var(--muted);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+        }
+        td {
+            padding: 0.5rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            white-space: nowrap;
+        }
+        tr:hover td { background: rgba(59, 130, 246, 0.05); }
+        code { font-size: 0.75rem; }
+        .state-badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #fff;
+        }
+        .empty-state { text-align: center; color: var(--muted); padding: 3rem; font-size: 1rem; }
+        .result-info { color: var(--muted); font-size: 0.85rem; margin-bottom: 0.75rem; }
+    </style>
+</head>
+<body>
+    <h1>Search Flow Runs</h1>
+    <p class="subtitle">Find runs by substring within any indexed column</p>
+
+    <nav class="nav">
+        <a href="/">Runs</a>
+        <a href="/summary">Summary</a>
+        <a href="/search" class="active">Search</a>
+    </nav>
+
+    <form class="filters" method="get" action="/search">
+        <select name="field">
+            {% for f in fields %}
+            <option value="{{ f }}" {{ "selected" if f == field else "" }}>{{ f }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="q" value="{{ query }}" placeholder="e.g. this_file.py" autofocus>
+        <label><input type="checkbox" name="exact" value="true" {{ "checked" if exact else "" }}> Exact match</label>
+        <button type="submit">Search</button>
+        <a href="/search" class="btn-clear" style="padding:0.4rem 0.75rem;border-radius:0.375rem;border:1px solid var(--border)">Clear</a>
+    </form>
+
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+
+    {% if query and not error %}
+    <p class="result-info">
+        {{ rows|length }} run(s) where <code>{{ field }}</code> {{ "=" if exact else "contains" }} "{{ query }}"
+    </p>
+    {% endif %}
+
+    {% if rows %}
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Flow</th>
+                    <th>Deployment</th>
+                    <th>Entrypoint</th>
+                    <th>State</th>
+                    <th>Pool Type</th>
+                    <th>Start Time</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr>
+                    <td><a href="/run/{{ row.get('id', '') }}" style="color:var(--accent);text-decoration:none;font-weight:bold">{{ row.get("name", "") }}</a></td>
+                    <td>{{ row.get("flow_name", "") }}</td>
+                    <td>{{ row.get("deployment_name", "") or "" }}</td>
+                    <td><code>{{ row.get("entrypoint", "") or "" }}</code></td>
+                    <td>
+                        {% set st = row.get("state_type", "") %}
+                        <span class="state-badge" style="background:{{ state_colours.get(st, '#64748b') }}">
+                            {{ row.get("state_name", st) }}
+                        </span>
+                    </td>
+                    <td>{{ row.get("work_pool_type", "") or "" }}</td>
+                    <td>{{ (row.get("start_time") or "")[:19] }}</td>
+                    <td>
+                        {% set dur = row.get("total_run_time_s") %}
+                        {% if dur is not none %}{{ "%.1f"|format(dur) }}s{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% elif query and not error %}
+    <div class="empty-state">No matching flow runs found.</div>
+    {% else %}
+    <div class="empty-state">Enter a search term above to find flow runs.</div>
+    {% endif %}
+</body>
+</html>

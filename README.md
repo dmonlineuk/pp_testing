@@ -65,6 +65,30 @@ prefect-history list --offset 20       # pagination (skip first 20)
 prefect-history show xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 ```
 
+### Searching Flow Runs (CLI)
+
+Search for a substring within any indexed column. Defaults to the `entrypoint`
+column, which is handy for cross-referencing which runs used a given script:
+
+```shell
+# Runs whose entrypoint contains "this_file.py"
+prefect-history search this_file.py
+
+# Search a different column
+prefect-history search kubernetes --field work_pool_type
+prefect-history search etl --field flow_name
+
+# Exact (whole-value) match instead of substring
+prefect-history search flows/etl.py:run --field entrypoint --exact
+
+# Limit results (default: 50)
+prefect-history search .py -n 100
+```
+
+Searchable columns include `entrypoint`, `flow_name`, `deployment_name`,
+`work_pool_name`, `work_pool_type`, `infrastructure_pid`, `state_type`, `tags`,
+`parameters`, and more. Substring matches are case-insensitive.
+
 ### Flow Summary
 
 ```shell
@@ -88,6 +112,7 @@ The web dashboard provides:
 - Stats overview (total runs, in-flight, last sync time)
 - Filter dropdowns for state type and flow name
 - Paginated table with colour-coded state badges
+- A `/search` page to find runs by substring within any indexed column
 - Smooth navigation via HTMX partial updates
 
 ### Global Options

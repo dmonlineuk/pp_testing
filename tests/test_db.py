@@ -224,6 +224,73 @@ class TestGetFlowRunById:
         assert row["parameters"] == '{"batch": 100}'
 
 
+class TestSearchFlowRuns:
+    def _seed(self, tmp_db):
+        tmp_db.upsert_flow_runs(
+            [
+                make_flow_run_row(
+                    run_id="a1",
+                    flow_name="etl",
+                    entrypoint="flows/etl.py:run",
+                    work_pool_type="kubernetes",
+                ),
+                make_flow_run_row(
+                    run_id="a2",
+                    flow_name="etl-nightly",
+                    entrypoint="flows/etl.py:nightly",
+                    work_pool_type="process",
+                ),
+                make_flow_run_row(
+                    run_id="a3",
+                    flow_name="report",
+                    entrypoint="flows/report.py:run",
+                    work_pool_type="kubernetes",
+                ),
+            ]
+        )
+
+    def test_substring_match(self, tmp_db):
+        self._seed(tmp_db)
+        rows = tmp_db.search_flow_runs("entrypoint", "etl.py")
+        assert {r["id"] for r in rows} == {"a1", "a2"}
+
+    def test_substring_case_insensitive(self, tmp_db):
+        self._seed(tmp_db)
+        rows = tmp_db.search_flow_runs("entrypoint", "ETL.PY")
+        assert {r["id"] for r in rows} == {"a1", "a2"}
+
+    def test_search_other_field(self, tmp_db):
+        self._seed(tmp_db)
+        rows = tmp_db.search_flow_runs("work_pool_type", "kubernetes")
+        assert {r["id"] for r in rows} == {"a1", "a3"}
+
+    def test_exact_match(self, tmp_db):
+        self._seed(tmp_db)
+        rows = tmp_db.search_flow_runs("entrypoint", "flows/etl.py:run", exact=True)
+        assert {r["id"] for r in rows} == {"a1"}
+
+    def test_exact_no_partial(self, tmp_db):
+        self._seed(tmp_db)
+        assert tmp_db.search_flow_runs("entrypoint", "flows/etl.py", exact=True) == []
+
+    def test_no_match(self, tmp_db):
+        self._seed(tmp_db)
+        assert tmp_db.search_flow_runs("entrypoint", "nope.py") == []
+
+    def test_limit(self, tmp_db):
+        self._seed(tmp_db)
+        rows = tmp_db.search_flow_runs("entrypoint", "flows/", limit=2)
+        assert len(rows) == 2
+
+    def test_invalid_field_raises(self, tmp_db):
+        with pytest.raises(ValueError):
+            tmp_db.search_flow_runs("total_run_time_s; DROP TABLE", "x")
+
+    def test_wildcard_is_escaped(self, tmp_db):
+        self._seed(tmp_db)
+        assert tmp_db.search_flow_runs("entrypoint", "%") == []
+
+
 class TestGetFlowSummary:
     def test_empty_db(self, tmp_db):
         assert tmp_db.get_flow_summary() == []

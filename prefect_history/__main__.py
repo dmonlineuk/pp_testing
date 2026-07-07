@@ -114,6 +114,33 @@ def _build_parser() -> argparse.ArgumentParser:
         help="The flow run ID to look up.",
     )
 
+    # -- search -----------------------------------------------------
+    se = sub.add_parser(
+        "search",
+        help="Search flow runs for a substring within a column.",
+    )
+    se.add_argument(
+        "term",
+        help="Substring to search for (e.g. this_file.py).",
+    )
+    se.add_argument(
+        "--field",
+        default="entrypoint",
+        help="Column to search (default: entrypoint).",
+    )
+    se.add_argument(
+        "--exact",
+        action="store_true",
+        help="Match the whole value exactly instead of a substring.",
+    )
+    se.add_argument(
+        "-n",
+        "--limit",
+        type=int,
+        default=50,
+        help="Max rows to display (default: 50).",
+    )
+
     # -- summary ----------------------------------------------------
     sm = sub.add_parser(
         "summary",
@@ -176,30 +203,9 @@ def _cmd_status(settings_kwargs: dict) -> None:
             )
 
 
-def _cmd_list(
-    settings_kwargs: dict,
-    *,
-    limit: int,
-    offset: int,
-    state: str | None,
-    flow: str | None,
-) -> None:
-    settings = load_settings(**settings_kwargs)
-    db = FlowRunDB(settings.db_path)
-
-    total = db.count_flow_runs(state_type=state)
-    rows = db.get_all_flow_runs(
-        state_type=state,
-        flow_name=flow,
-        limit=limit,
-        offset=offset,
-    )
-
-    console = Console()
-    table = Table(
-        title=f"Flow Runs ({offset + 1}-{offset + len(rows)} of {total})",
-        show_lines=True,
-    )
+def _render_runs_table(rows: list[dict], *, title: str) -> Table:
+    """Build a rich Table of flow runs matching the list/search layout."""
+    table = Table(title=title, show_lines=True)
     table.add_column("Name", style="bold")
     table.add_column("Flow")
     table.add_column("Deployment")
@@ -228,10 +234,68 @@ def _cmd_list(
             dur_str,
         )
 
+    return table
+
+
+def _cmd_list(
+    settings_kwargs: dict,
+    *,
+    limit: int,
+    offset: int,
+    state: str | None,
+    flow: str | None,
+) -> None:
+    settings = load_settings(**settings_kwargs)
+    db = FlowRunDB(settings.db_path)
+
+    total = db.count_flow_runs(state_type=state)
+    rows = db.get_all_flow_runs(
+        state_type=state,
+        flow_name=flow,
+        limit=limit,
+        offset=offset,
+    )
+
+    console = Console()
+    table = _render_runs_table(
+        rows,
+        title=f"Flow Runs ({offset + 1}-{offset + len(rows)} of {total})",
+    )
     console.print(table)
 
     if offset + limit < total:
         console.print(f"  [dim]Next page: --offset {offset + limit}[/dim]")
+
+
+def _cmd_search(
+    settings_kwargs: dict,
+    *,
+    term: str,
+    field: str,
+    exact: bool,
+    limit: int,
+) -> None:
+    settings = load_settings(**settings_kwargs)
+    db = FlowRunDB(settings.db_path)
+
+    try:
+        rows = db.search_flow_runs(field, term, exact=exact, limit=limit)
+    except ValueError as exc:
+        print(str(exc))
+        return
+
+    if not rows:
+        match = "matching" if exact else "containing"
+        print(f"No flow runs found with {field} {match} {term!r}.")
+        return
+
+    match = "=" if exact else "contains"
+    console = Console()
+    table = _render_runs_table(
+        rows,
+        title=f"Search: {field} {match} {term!r} ({len(rows)} shown)",
+    )
+    console.print(table)
 
 
 def _cmd_show(settings_kwargs: dict, *, run_id: str) -> None:
@@ -402,6 +466,15 @@ def main(argv: list[str] | None = None) -> None:
 
     elif args.command == "show":
         _cmd_show(settings_kwargs, run_id=args.run_id)
+
+    elif args.command == "search":
+        _cmd_search(
+            settings_kwargs,
+            term=args.term,
+            field=args.field,
+            exact=args.exact,
+            limit=args.limit,
+        )
 
     elif args.command == "summary":
         _cmd_summary(settings_kwargs, since=args.since, flow=args.flow)
