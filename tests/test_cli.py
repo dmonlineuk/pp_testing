@@ -245,6 +245,74 @@ class TestMainShow:
         assert "Flow run not found" in output
 
 
+class TestParserSearch:
+    def test_search_defaults(self):
+        parser = _build_parser()
+        args = parser.parse_args(["search", "this_file.py"])
+        assert args.command == "search"
+        assert args.term == "this_file.py"
+        assert args.field == "entrypoint"
+        assert args.exact is False
+        assert args.limit == 50
+
+    def test_search_with_options(self):
+        parser = _build_parser()
+        args = parser.parse_args(
+            ["search", "kubernetes", "--field", "work_pool_type", "--exact", "-n", "5"]
+        )
+        assert args.field == "work_pool_type"
+        assert args.exact is True
+        assert args.limit == 5
+
+
+class TestMainSearch:
+    def _seed(self, tmp_path):
+        from prefect_history.db import FlowRunDB
+        from tests.conftest import make_flow_run_row
+
+        db_path = str(tmp_path / "cli_search.db")
+        db = FlowRunDB(db_path)
+        db.upsert_flow_runs(
+            [
+                make_flow_run_row(
+                    run_id="s1", flow_name="etl", entrypoint="flows/etl.py:run"
+                ),
+                make_flow_run_row(
+                    run_id="s2", flow_name="rep", entrypoint="flows/report.py:run"
+                ),
+            ]
+        )
+        return db_path
+
+    def test_search_displays_matches(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("PREFECT_API_URL", "https://api.test.com")
+        monkeypatch.setenv("PREFECT_API_KEY", "pnu_test")
+        db_path = self._seed(tmp_path)
+
+        main(["--db", db_path, "search", "etl.py"])
+        output = capsys.readouterr().out
+        assert "Search" in output
+        assert "etl" in output
+
+    def test_search_no_match(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("PREFECT_API_URL", "https://api.test.com")
+        monkeypatch.setenv("PREFECT_API_KEY", "pnu_test")
+        db_path = self._seed(tmp_path)
+
+        main(["--db", db_path, "search", "nope.py"])
+        output = capsys.readouterr().out
+        assert "No flow runs found" in output
+
+    def test_search_invalid_field(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setenv("PREFECT_API_URL", "https://api.test.com")
+        monkeypatch.setenv("PREFECT_API_KEY", "pnu_test")
+        db_path = self._seed(tmp_path)
+
+        main(["--db", db_path, "search", "x", "--field", "not_a_column"])
+        output = capsys.readouterr().out
+        assert "not searchable" in output
+
+
 class TestMainNoCommand:
     def test_no_command_exits(self):
         with pytest.raises(SystemExit) as exc_info:

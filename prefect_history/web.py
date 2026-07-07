@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from prefect_history.config import load_settings
-from prefect_history.db import FlowRunDB
+from prefect_history.db import SEARCHABLE_COLUMNS, FlowRunDB
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -136,6 +136,37 @@ def create_app(settings_kwargs: dict[str, Any] | None = None) -> FastAPI:
                 "flows": filters["flows"],
                 "flow_filter": flow or "",
                 "since_filter": since or "",
+            },
+        )
+
+    @app.get("/search", response_class=HTMLResponse)
+    async def search_page(
+        request: Request,
+        q: str | None = Query(None),
+        field: str = Query("entrypoint"),
+        exact: bool = Query(False),
+    ) -> HTMLResponse:
+        db = _get_db(app)
+        rows: list[dict] = []
+        error: str | None = None
+
+        if q:
+            try:
+                rows = db.search_flow_runs(field, q, exact=exact)
+            except ValueError as exc:
+                error = str(exc)
+
+        return templates.TemplateResponse(
+            request,
+            "search.html",
+            {
+                "rows": rows,
+                "query": q or "",
+                "field": field,
+                "exact": exact,
+                "error": error,
+                "fields": sorted(SEARCHABLE_COLUMNS),
+                "state_colours": STATE_COLOURS,
             },
         )
 

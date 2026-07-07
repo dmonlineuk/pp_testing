@@ -230,6 +230,65 @@ class TestRunDetail:
         assert "/run/web-" in resp.text
 
 
+class TestSearch:
+    @pytest.mark.asyncio
+    async def test_search_page_renders(self, seeded_app):
+        transport = ASGITransport(app=seeded_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/search")
+        assert resp.status_code == 200
+        assert "Search Flow Runs" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_search_finds_matches(self, seeded_app):
+        transport = ASGITransport(app=seeded_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get(
+                "/search", params={"q": "etl.py", "field": "entrypoint"}
+            )
+        assert resp.status_code == 200
+        assert "flows/etl.py:run" in resp.text
+        assert "/run/web-" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_search_no_match(self, seeded_app):
+        transport = ASGITransport(app=seeded_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/search", params={"q": "nope.py"})
+        assert resp.status_code == 200
+        assert "No matching flow runs" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_search_invalid_field_shows_error(self, seeded_app):
+        transport = ASGITransport(app=seeded_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/search", params={"q": "x", "field": "bogus"})
+        assert resp.status_code == 200
+        assert "not searchable" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_search_exact_match(self, seeded_app):
+        transport = ASGITransport(app=seeded_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get(
+                "/search",
+                params={
+                    "q": "flows/etl.py:run",
+                    "field": "entrypoint",
+                    "exact": "true",
+                },
+            )
+        assert resp.status_code == 200
+        assert "/run/web-" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_index_nav_links_search(self, seeded_app):
+        transport = ASGITransport(app=seeded_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as ac:
+            resp = await ac.get("/")
+        assert 'href="/search"' in resp.text
+
+
 class TestIndexNavigation:
     @pytest.mark.asyncio
     async def test_index_has_nav(self, seeded_app):

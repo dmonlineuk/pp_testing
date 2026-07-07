@@ -7,6 +7,32 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+SEARCHABLE_COLUMNS: frozenset[str] = frozenset(
+    {
+        "id",
+        "flow_id",
+        "flow_name",
+        "name",
+        "deployment_id",
+        "deployment_name",
+        "deployment_version",
+        "entrypoint",
+        "work_pool_name",
+        "work_pool_type",
+        "work_queue_name",
+        "infrastructure_pid",
+        "created_by_type",
+        "created_by_id",
+        "created_by_display",
+        "state_type",
+        "state_name",
+        "state_message",
+        "tags",
+        "parameters",
+        "parent_task_run_id",
+    }
+)
+
 _SCHEMA_SQL = """\
 CREATE TABLE IF NOT EXISTS flow_runs (
     id                  TEXT PRIMARY KEY,
@@ -202,6 +228,54 @@ class FlowRunDB:
         with self._connect() as conn:
             row = conn.execute(sql, (run_id,)).fetchone()
             return dict(row) if row else None
+
+    def search_flow_runs(
+        self,
+        field: str,
+        value: str,
+        *,
+        exact: bool = False,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        """Search cached flow runs by substring (or exact match) within a column.
+
+        Parameters
+        ----------
+        field:
+            Column to search. Must be one of ``SEARCHABLE_COLUMNS``.
+        value:
+            Search term. Matched case-insensitively as a substring by default.
+        exact:
+            If ``True``, match the whole value exactly instead of a substring.
+        limit / offset:
+            Optional pagination.
+
+        Raises ``ValueError`` if ``field`` is not searchable.
+        """
+        if field not in SEARCHABLE_COLUMNS:
+            allowed = ", ".join(sorted(SEARCHABLE_COLUMNS))
+            raise ValueError(
+                f"Field {field!r} is not searchable. Allowed fields: {allowed}"
+            )
+
+        if exact:
+            clause = f"{field} = ?"
+            param: str = value
+        else:
+            clause = f"{field} LIKE ? ESCAPE '\\'"
+            escaped = (
+                value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            )
+            param = f"%{escaped}%"
+
+        sql = f"SELECT * FROM flow_runs WHERE {clause} ORDER BY start_time DESC"
+        params: list[str | int] = [param]
+        if limit is not None:
+            sql += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        with self._connect() as conn:
+            return [dict(row) for row in conn.execute(sql, params)]
 
     def count_flow_runs(self, *, state_type: str | None = None) -> int:
         """Count cached flow runs, optionally filtered by state_type."""
